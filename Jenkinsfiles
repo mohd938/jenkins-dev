@@ -1,0 +1,86 @@
+pipeline {
+    agent any
+
+    environment {
+        REPO_URL = 'https://github.com/mohd938/jenkins-dev.git'
+        BRANCH_DEV = 'dev'
+        BRANCH_TEST = 'test'
+        BRANCH_PROD = 'prod'
+    }
+
+    stages {
+        stage('Checkout Dev') {
+            when {
+                branch BRANCH_DEV
+            }
+            steps {
+                git url: "${REPO_URL}", branch: "${BRANCH_DEV}"
+                echo "Checked out code from Dev branch"
+            }
+        }
+
+        stage('Merge Dev to Test') {
+            when {
+                expression {
+                    return currentBuild.getBuildCauses().any { cause ->
+                        cause.toString().contains("PullRequestSCMHead")
+                    }
+                }
+            }
+            steps {
+                script {
+                    echo "PR approved — merging Dev to Test"
+                    sh """
+                        git config user.name "jenkins-git"
+                        git config user.email "admin@admin.com"
+                        git checkout ${BRANCH_TEST}
+                        git merge origin/${BRANCH_DEV}
+                        git push origin ${BRANCH_TEST}
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to Test') {
+            steps {
+                echo "Deploying to Test environment..."
+                // Add deployment logic here
+            }
+        }
+
+        stage('Approval for Prod') {
+            steps {
+                input message: 'Approve deployment to Prod?', ok: 'Deploy'
+            }
+        }
+
+        stage('Merge Test to Prod') {
+            steps {
+                script {
+                    echo "Merging Test to Prod"
+                    sh """
+                        git checkout ${BRANCH_PROD}
+                        git merge origin/${BRANCH_TEST}
+                        git push origin ${BRANCH_PROD}
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to Prod') {
+            steps {
+                echo "Deploying to Production..."
+                // Add production deployment logic here
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline completed successfully!"
+        }
+        failure {
+            echo "Pipeline failed. Check logs for details."
+        }
+    }
+}
